@@ -1,0 +1,6 @@
+@VFX_BASM_ForeignExchangeRates_HostAddress = http://localhost:5146
+
+GET {{VFX_BASM_ForeignExchangeRates_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
