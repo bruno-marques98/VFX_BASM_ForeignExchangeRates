@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VFX_BASM_ForeignExchangeRates.Data;
+using VFX_BASM_ForeignExchangeRates.Interfaces;
 using VFX_BASM_ForeignExchangeRates.Models;
 
 namespace VFX_BASM_ForeignExchangeRates.Controllers
@@ -10,14 +11,19 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
     public class ForeignExchangeRateController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IAlphaVantageService _alphaService;
+        private readonly IEventPublisher _eventPublisher;
+
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ForeignExchangeRateController"/> class.
         /// </summary>
         /// <param name="context">The <see cref="ApplicationDbContext"/> used to access foreign exchange rates.</param>
-        public ForeignExchangeRateController(ApplicationDbContext context)
+        public ForeignExchangeRateController(ApplicationDbContext context, IAlphaVantageService alphaService, IEventPublisher eventPublisher)
         {
             _context = context;
+            _alphaService = alphaService;
+            _eventPublisher = eventPublisher;
         }
 
         // GET: api/ForeignExchangeRate
@@ -73,14 +79,30 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
         [HttpGet("{baseCurrency}/{quoteCurrency}")]
         public async Task<ActionResult<Models.ForeignExchangeRate>> GetForeignExchangeRateByCurrencyPair(string baseCurrency, string quoteCurrency)
         {
+            baseCurrency = baseCurrency.ToUpper();
+            quoteCurrency = quoteCurrency.ToUpper();
+
             var rate = await _context.ForeignExchangeRates
-                .FirstOrDefaultAsync(r =>
-                    r.BaseCurrency == baseCurrency &&
-                    r.QuoteCurrency == quoteCurrency);
-            if (rate == null)
+                .FirstOrDefaultAsync(x =>
+                    x.BaseCurrency == baseCurrency &&
+                    x.QuoteCurrency == quoteCurrency);
+
+            if (rate != null)
+                return Ok(rate);
+
+            // Not in DB → fetch from third-party
+            var externalRate = await _alphaService
+                .GetExchangeRateAsync(baseCurrency, quoteCurrency);
+
+            if (externalRate == null)
                 return NotFound();
 
-            return rate;
+            _context.ForeignExchangeRates.Add(externalRate);
+            await _context.SaveChangesAsync();
+
+            await _eventPublisher.PublishAsync(externalRate);
+
+            return Ok(externalRate);
         }
 
         // POST: api/ForeignExchangeRate

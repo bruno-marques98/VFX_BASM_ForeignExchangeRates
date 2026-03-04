@@ -58,5 +58,19 @@ namespace VFX_BASM_ForeignExchangeRates.Models
         /// Defaults to <see cref="System.DateTime.UtcNow"/> at creation time.
         /// </remarks>
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Gets or sets the concurrency token (row version) used by Entity Framework Core for optimistic concurrency checks.
+        /// </summary>
+        /// <remarks>
+        /// This property is typically configured as a database-generated timestamp/rowversion column.
+        /// It should not be set by application code; EF Core updates it when the record is persisted.
+        /// The property is annotated with <see cref="TimestampAttribute"/> to indicate concurrency tracking.
+        /// </remarks>
+        /// <value>
+        /// A byte array containing the row version value. It may be null for entities that have not yet been persisted.
+        /// </value>
+        [Timestamp]
+        public byte[]? RowVersion { get; set; }
     }
 }

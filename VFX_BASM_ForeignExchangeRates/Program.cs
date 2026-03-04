@@ -1,6 +1,8 @@
-
 using Microsoft.EntityFrameworkCore;
 using VFX_BASM_ForeignExchangeRates.Data;
+using VFX_BASM_ForeignExchangeRates.Interfaces;
+using VFX_BASM_ForeignExchangeRates.Publisher;
+using VFX_BASM_ForeignExchangeRates.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// HttpClient for AlphaVantageService
+builder.Services.AddHttpClient<IAlphaVantageService, AlphaVantageService>();
+
+// RabbitMQ publisher
+builder.Services.AddScoped<IEventPublisher, RabbitMqPublisher>();
+
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
