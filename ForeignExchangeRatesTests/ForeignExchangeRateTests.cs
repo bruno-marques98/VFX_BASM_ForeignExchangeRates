@@ -228,6 +228,139 @@ namespace ForeignExchangeRatesTests
         }
 
         /// <summary>
+        /// Verifies controller returns BadRequest when base or quote currency is null/whitespace.
+        /// </summary>
+        [Fact]
+        public async Task GetForeignExchangeRateByCurrencyPair_ReturnsBadRequest_WhenParametersMissing()
+        {
+            using var context = CreateInMemoryContext(nameof(GetForeignExchangeRateByCurrencyPair_ReturnsBadRequest_WhenParametersMissing));
+            var alphaMock = new Mock<IAlphaVantageService>();
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            // null baseCurrency
+            var resultNullBase = await controller.GetForeignExchangeRateByCurrencyPair(null, "EUR");
+            Assert.IsType<BadRequestObjectResult>(resultNullBase.Result);
+
+            // whitespace quoteCurrency
+            var resultWhitespaceQuote = await controller.GetForeignExchangeRateByCurrencyPair("USD", "   ");
+            Assert.IsType<BadRequestObjectResult>(resultWhitespaceQuote.Result);
+        }
+
+        /// <summary>
+        /// Verifies that when the external service throws an exception the controller responds with 503.
+        /// </summary>
+        [Fact]
+        public async Task GetForeignExchangeRateByCurrencyPair_ReturnsServiceUnavailable_OnExternalException()
+        {
+            using var context = CreateInMemoryContext(nameof(GetForeignExchangeRateByCurrencyPair_ReturnsServiceUnavailable_OnExternalException));
+            var alphaMock = new Mock<IAlphaVantageService>();
+            alphaMock.Setup(x => x.GetExchangeRateAsync("USD", "EUR"))
+                .ThrowsAsync(new Exception("network failure"));
+
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var result = await controller.GetForeignExchangeRateByCurrencyPair("USD", "EUR");
+
+            var objectResult = Assert.IsType<ObjectResult>(result.Result);
+            Assert.Equal(503, objectResult.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies that controller still returns OK and persists the rate when publishing the event fails.
+        /// </summary>
+        [Fact]
+        public async Task GetForeignExchangeRateByCurrencyPair_PersistsAndReturnsOk_WhenPublishThrows()
+        {
+            var dbName = nameof(GetForeignExchangeRateByCurrencyPair_PersistsAndReturnsOk_WhenPublishThrows);
+            using var context = CreateInMemoryContext(dbName);
+
+            var external = new ForeignExchangeRate
+            {
+                BaseCurrency = "usd",
+                QuoteCurrency = "jpy",
+                Bid = 110.5m,
+                Ask = 111.0m
+            };
+
+            var alphaMock = new Mock<IAlphaVantageService>();
+            alphaMock.Setup(x => x.GetExchangeRateAsync("USD", "JPY"))
+                .ReturnsAsync(external);
+
+            var eventMock = new Mock<IEventPublisher>();
+            eventMock.Setup(x => x.PublishAsync(It.IsAny<ForeignExchangeRate>()))
+                .ThrowsAsync(new Exception("publish failure"));
+
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var result = await controller.GetForeignExchangeRateByCurrencyPair("usd", "jpy");
+
+            var ok = Assert.IsType<OkObjectResult>(result.Result);
+            var returned = Assert.IsType<ForeignExchangeRate>(ok.Value);
+
+            // normalized to uppercase in response
+            Assert.Equal("USD", returned.BaseCurrency);
+            Assert.Equal("JPY", returned.QuoteCurrency);
+
+            // persisted despite publish failure
+            var persisted = await context.ForeignExchangeRates
+                .FirstOrDefaultAsync(x => x.BaseCurrency == "USD" && x.QuoteCurrency == "JPY");
+            Assert.NotNull(persisted);
+
+            eventMock.Verify(x => x.PublishAsync(It.IsAny<ForeignExchangeRate>()), Times.Once);
+        }
+
+        /// <summary>
+        /// Verifies that external rates with lowercase currency codes are normalized before persisting.
+        /// </summary>
+        [Fact]
+        public async Task GetForeignExchangeRateByCurrencyPair_NormalizesExternalCurrencies_WhenLowercase()
+        {
+            var dbName = nameof(GetForeignExchangeRateByCurrencyPair_NormalizesExternalCurrencies_WhenLowercase);
+            using var context = CreateInMemoryContext(dbName);
+
+            var external = new ForeignExchangeRate
+            {
+                BaseCurrency = "usd",
+                QuoteCurrency = "jpy",
+                Bid = 110.5m,
+                Ask = 111.0m
+            };
+
+            var alphaMock = new Mock<IAlphaVantageService>();
+            alphaMock.Setup(x => x.GetExchangeRateAsync("USD", "JPY"))
+                .ReturnsAsync(external);
+
+            var eventMock = new Mock<IEventPublisher>();
+            eventMock.Setup(x => x.PublishAsync(It.IsAny<ForeignExchangeRate>())).Returns(Task.CompletedTask);
+
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var result = await controller.GetForeignExchangeRateByCurrencyPair("usd", "jpy");
+
+            var ok = Assert.IsType<OkObjectResult>(result.Result);
+            var returned = Assert.IsType<ForeignExchangeRate>(ok.Value);
+
+            Assert.Equal("USD", returned.BaseCurrency);
+            Assert.Equal("JPY", returned.QuoteCurrency);
+
+            var persisted = await context.ForeignExchangeRates
+                .FirstOrDefaultAsync(x => x.BaseCurrency == "USD" && x.QuoteCurrency == "JPY");
+            Assert.NotNull(persisted);
+            Assert.Equal("USD", persisted.BaseCurrency);
+            Assert.Equal("JPY", persisted.QuoteCurrency);
+        }
+
+        /// <summary>
         /// Verifies that creating a duplicate foreign exchange rate returns a conflict response.
         /// </summary>
         [Fact]
