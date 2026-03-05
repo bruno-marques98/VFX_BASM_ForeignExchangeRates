@@ -1,0 +1,36 @@
+$kind: http-request
+name: Update Rate
+method: PUT
+url: '{{baseUrl}}/api/ForeignExchangeRate/:id'
+order: 5000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: Accept
+    value: application/json
+pathVariables:
+  - key: id
+    value: '1'
+    description: The identifier of the rate to update
+body:
+  type: json
+  content: |-
+    {
+      "baseCurrency": "USD",
+      "quoteCurrency": "EUR",
+      "bid": 0.925,
+      "ask": 0.935
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 204, 400, 404, or 409", function () {
+          pm.expect(pm.response.code).to.be.oneOf([204, 400, 404, 409]);
+      });
+
+      if (pm.response.code === 204) {
+          pm.test("No content returned on success", function () {
+              pm.expect(pm.response.text()).to.be.empty;
+          });
+      }

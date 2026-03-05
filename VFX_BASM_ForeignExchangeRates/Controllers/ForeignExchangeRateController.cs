@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VFX_BASM_ForeignExchangeRates.Data;
+using VFX_BASM_ForeignExchangeRates.DTO_s;
 using VFX_BASM_ForeignExchangeRates.Interfaces;
 using VFX_BASM_ForeignExchangeRates.Models;
 
@@ -59,10 +60,11 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
         public async Task<ActionResult<Models.ForeignExchangeRate>> GetForeignExchangeRateById(int id)
         {
             var rate = await _context.ForeignExchangeRates.FindAsync(id);
+
+            // if not found, return 404; otherwise return the entity with 200 OK
             if (rate == null)
-            {
                 return NotFound();
-            }
+       
             return rate;
         }
 
@@ -81,12 +83,15 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
         [HttpGet("{baseCurrency}/{quoteCurrency}")]
         public async Task<ActionResult<Models.ForeignExchangeRate>> GetForeignExchangeRateByCurrencyPair(string baseCurrency, string quoteCurrency)
         {
+            // Check for null or whitespace to prevent unnecessary DB queries and provide clearer error messages
             if (string.IsNullOrWhiteSpace(baseCurrency) || string.IsNullOrWhiteSpace(quoteCurrency))
                 return BadRequest("baseCurrency and quoteCurrency are required.");
 
+            // Normalize input to uppercase to ensure consistent querying
             baseCurrency = baseCurrency.ToUpper();
             quoteCurrency = quoteCurrency.ToUpper();
 
+            // Get rate from DB first
             var rate = await _context.ForeignExchangeRates
                 .FirstOrDefaultAsync(x =>
                     x.BaseCurrency == baseCurrency &&
@@ -145,17 +150,28 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
         /// <response code="201">The rate was successfully created.</response>
         /// <response code="400">The request data was invalid.</response>
         [HttpPost]
-        public async Task<ActionResult<Models.ForeignExchangeRate>> CreateForeignExchangeRate(ForeignExchangeRate rate)
+        public async Task<ActionResult<Models.ForeignExchangeRate>> CreateForeignExchangeRate(ForeignExchangeRateRequest request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            if (rate == null)
+            if (request == null)
                 return BadRequest("Rate payload is required.");
 
-            rate.BaseCurrency = rate.BaseCurrency.ToUpper();
-            rate.QuoteCurrency = rate.QuoteCurrency.ToUpper();
-            rate.Timestamp = DateTime.UtcNow;
+
+            // This check serves to follow the market rules
+            if (request.Ask < request.Bid)
+                return BadRequest("Ask price must be greater than or equal to Bid.");
+
+            // Normalize input
+            var rate = new ForeignExchangeRate
+            {
+                BaseCurrency = request.BaseCurrency.ToUpper(),
+                QuoteCurrency = request.QuoteCurrency.ToUpper(),
+                Bid = request.Bid,
+                Ask = request.Ask,
+                Timestamp = DateTime.UtcNow
+            };
 
             // Prevent duplicate currency pair entries
             var exists = await _context.ForeignExchangeRates.AnyAsync(x =>
@@ -165,6 +181,17 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
             if (exists)
                 return Conflict("A rate for this currency pair already exists.");
 
+            // Persist to DB so the entity receives an Id prior to publishing
+            _context.ForeignExchangeRates.Add(rate);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogError(ex, "Error saving new rate {Base}/{Quote}.", rate.BaseCurrency, rate.QuoteCurrency);
+                return Problem(detail: "Error saving rate. Please try again later.", statusCode: 500);
+            }
 
             // Publish event; log failures but do not block the client response
             try
@@ -193,24 +220,37 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
         /// <response code="400">The supplied id does not match the payload.</response>
         /// <response code="404">No rate found with the specified identifier.</response>
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateForeignExchangeRate(int id, ForeignExchangeRate updatedRate)
+        public async Task<IActionResult> UpdateForeignExchangeRate(int id, ForeignExchangeRateRequest request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-
-            if (id != updatedRate.Id)
-                return BadRequest();
 
             var existingRate = await _context.ForeignExchangeRates.FindAsync(id);
             if (existingRate == null)
                 return NotFound();
 
-            existingRate.BaseCurrency = updatedRate.BaseCurrency.ToUpper();
-            existingRate.QuoteCurrency = updatedRate.QuoteCurrency.ToUpper();
-            existingRate.Bid = updatedRate.Bid;
-            existingRate.Ask = updatedRate.Ask;
+            // This check serves to follow the market rules
+            if (request.Ask < request.Bid)
+                return BadRequest("Ask price must be greater than or equal to Bid.");
+
+            var baseCurrency = request.BaseCurrency.ToUpper();
+            var quoteCurrency = request.QuoteCurrency.ToUpper();
+
+            // Prevent duplicate currency pair entries
+            var exists = await _context.ForeignExchangeRates.AnyAsync(x =>
+                x.BaseCurrency == baseCurrency &&
+                x.QuoteCurrency == quoteCurrency &&
+                x.Id != id);
+
+            if (exists)
+                return Conflict("A rate for this currency pair already exists.");
+
+            existingRate.BaseCurrency = request.BaseCurrency.ToUpper();
+            existingRate.QuoteCurrency = request.QuoteCurrency.ToUpper();
+            existingRate.Bid = request.Bid;
+            existingRate.Ask = request.Ask;
             existingRate.Timestamp = DateTime.UtcNow;
-            _context.Entry(existingRate).State = EntityState.Modified;
+
 
             try
             {

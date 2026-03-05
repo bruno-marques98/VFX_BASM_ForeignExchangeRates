@@ -1,0 +1,7 @@
+$kind: collection
+name: ForeignExchangeRate
+description: |-
+  CRUD operations for foreign exchange rates.
+  
+  Base route: `api/ForeignExchangeRate`
+order: 1000

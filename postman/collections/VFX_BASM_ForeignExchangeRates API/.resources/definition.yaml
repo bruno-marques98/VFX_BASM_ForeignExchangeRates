@@ -1,0 +1,24 @@
+$kind: collection
+name: VFX_BASM_ForeignExchangeRates API
+description: |-
+  API collection for the VFX_BASM_ForeignExchangeRates .NET Web API.
+  
+  ## Endpoints
+  - **ForeignExchangeRate**: CRUD operations for foreign exchange rates
+  
+  ## Response Schema
+  ```json
+  {
+    "id": 1,
+    "baseCurrency": "USD",
+    "quoteCurrency": "EUR",
+    "bid": 0.92,
+    "ask": 0.93,
+    "timestamp": "2024-01-01T00:00:00Z",
+    "rowVersion": "AAAAAAAAB9E="
+  }
+  ```
+variables:
+  - key: baseUrl
+    value: 'http://localhost:7145'
+    description: Base URL for the API server

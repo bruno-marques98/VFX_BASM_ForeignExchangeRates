@@ -62,7 +62,7 @@ namespace VFX_BASM_ForeignExchangeRates.Services
         /// <exception cref="FormatException">Thrown when the bid/ask string values cannot be parsed to <see cref="decimal"/>.</exception>
         public async Task<ForeignExchangeRate?> GetExchangeRateAsync(string baseCurrency, string quoteCurrency)
         {
-            var apiKey = _config["AlphaVantage:457YJJFZWML8PF1D"];
+            var apiKey = _config["AlphaVantage:ApiKey"];
 
             var url =
                 $"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE" +
@@ -76,11 +76,16 @@ namespace VFX_BASM_ForeignExchangeRates.Services
             var json = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(json);
 
-            var rateNode = doc.RootElement
-                .GetProperty("Realtime Currency Exchange Rate");
+            if (!doc.RootElement.TryGetProperty("Realtime Currency Exchange Rate", out var rateNode))
+                return null;
 
-            var bid = decimal.Parse(rateNode.GetProperty("8. Bid Price").GetString()!);
-            var ask = decimal.Parse(rateNode.GetProperty("9. Ask Price").GetString()!);
+            var bid = decimal.Parse(
+                rateNode.GetProperty("8. Bid Price").GetString()!,
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            var ask = decimal.Parse(
+                rateNode.GetProperty("9. Ask Price").GetString()!,
+                System.Globalization.CultureInfo.InvariantCulture);
 
             return new ForeignExchangeRate
             {

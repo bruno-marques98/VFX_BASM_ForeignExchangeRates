@@ -1,0 +1,25 @@
+$kind: http-request
+name: Delete Rate
+method: DELETE
+url: '{{baseUrl}}/api/ForeignExchangeRate/:id'
+order: 6000
+headers:
+  - key: Accept
+    value: application/json
+pathVariables:
+  - key: id
+    value: '1'
+    description: The database identifier of the foreign exchange rate to delete
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 204 or 404", function () {
+          pm.expect(pm.response.code).to.be.oneOf([204, 404]);
+      });
+
+      if (pm.response.code === 204) {
+          pm.test("No content returned on success", function () {
+              pm.expect(pm.response.text()).to.be.empty;
+          });
+      }
