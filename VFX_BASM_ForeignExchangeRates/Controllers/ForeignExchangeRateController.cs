@@ -163,6 +163,9 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
             if (request.Ask < request.Bid)
                 return BadRequest("Ask price must be greater than or equal to Bid.");
 
+            if (request.BaseCurrency == request.QuoteCurrency)
+                return BadRequest("BaseCurrency and QuoteCurrency cannot be the same.");
+
             // Normalize input
             var rate = new ForeignExchangeRate
             {
@@ -232,6 +235,9 @@ namespace VFX_BASM_ForeignExchangeRates.Controllers
             // This check serves to follow the market rules
             if (request.Ask < request.Bid)
                 return BadRequest("Ask price must be greater than or equal to Bid.");
+
+            if (request.BaseCurrency == request.QuoteCurrency)
+                return BadRequest("BaseCurrency and QuoteCurrency cannot be the same.");
 
             var baseCurrency = request.BaseCurrency.ToUpper();
             var quoteCurrency = request.QuoteCurrency.ToUpper();

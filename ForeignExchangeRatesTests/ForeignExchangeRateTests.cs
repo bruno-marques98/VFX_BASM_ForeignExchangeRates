@@ -279,6 +279,121 @@ namespace ForeignExchangeRatesTests
             eventMock.Verify(x => x.PublishAsync(It.Is<ForeignExchangeRate>(r => r.BaseCurrency == "USD" && r.QuoteCurrency == "CAD")), Times.Once);
         }
 
+        /// <summary>
+        /// Verifies that Create returns BadRequest when controller's ModelState is invalid.
+        /// </summary>
+        [Fact]
+        public async Task CreateForeignExchangeRate_ReturnsBadRequest_WhenModelStateInvalid()
+        {
+            using var context = CreateInMemoryContext(nameof(CreateForeignExchangeRate_ReturnsBadRequest_WhenModelStateInvalid));
+            var alphaMock = new Mock<IAlphaVantageService>();
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+            controller.ModelState.AddModelError("BaseCurrency", "Required");
+
+            var request = new ForeignExchangeRateRequest
+            {
+                BaseCurrency = "",
+                QuoteCurrency = "EUR",
+                Bid = 1m,
+                Ask = 1.1m
+            };
+
+            var action = await controller.CreateForeignExchangeRate(request);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(action.Result);
+            Assert.NotNull(badRequest.Value);
+        }
+
+        /// <summary>
+        /// Verifies that Create returns BadRequest when the payload is null.
+        /// The controller is expected to return a specific error message for null payloads.
+        /// </summary>
+        [Fact]
+        public async Task CreateForeignExchangeRate_ReturnsBadRequest_WhenPayloadIsNull()
+        {
+            using var context = CreateInMemoryContext(nameof(CreateForeignExchangeRate_ReturnsBadRequest_WhenPayloadIsNull));
+            var alphaMock = new Mock<IAlphaVantageService>();
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var action = await controller.CreateForeignExchangeRate(null);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(action.Result);
+            // Controller returns a specific error message for null payloads
+            Assert.Equal("Rate payload is required.", badRequest.Value);
+        }
+
+        /// <summary>
+        /// Verifies that Create returns BadRequest when Ask is less than Bid (invalid pricing).
+        /// </summary>
+        [Fact]
+        public async Task CreateForeignExchangeRate_ReturnsBadRequest_WhenAskLessThanBid()
+        {
+            using var context = CreateInMemoryContext(nameof(CreateForeignExchangeRate_ReturnsBadRequest_WhenAskLessThanBid));
+            var alphaMock = new Mock<IAlphaVantageService>();
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var request = new ForeignExchangeRateRequest
+            {
+                BaseCurrency = "USD",
+                QuoteCurrency = "EUR",
+                Bid = 1.50m,
+                Ask = 1.40m // Ask < Bid → invalid
+            };
+
+            var action = await controller.CreateForeignExchangeRate(request);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(action.Result);
+            Assert.Equal("Ask price must be greater than or equal to Bid.", badRequest.Value);
+        }
+
+        /// <summary>
+        /// Verifies that Update returns BadRequest when Ask is less than Bid.
+        /// </summary>
+        [Fact]
+        public async Task UpdateForeignExchangeRate_ReturnsBadRequest_WhenAskLessThanBid()
+        {
+            var dbName = nameof(UpdateForeignExchangeRate_ReturnsBadRequest_WhenAskLessThanBid);
+            using var context = CreateInMemoryContext(dbName);
+
+            // seed an existing entity
+            var existing = new ForeignExchangeRate
+            {
+                BaseCurrency = "USD",
+                QuoteCurrency = "EUR",
+                Bid = 1.00m,
+                Ask = 1.10m
+            };
+            context.ForeignExchangeRates.Add(existing);
+            await context.SaveChangesAsync();
+
+            var alphaMock = new Mock<IAlphaVantageService>();
+            var eventMock = new Mock<IEventPublisher>();
+            var loggerMock = new Mock<ILogger<ForeignExchangeRateController>>();
+
+            var controller = new ForeignExchangeRateController(context, alphaMock.Object, eventMock.Object, loggerMock.Object);
+
+            var request = new ForeignExchangeRateRequest
+            {
+                BaseCurrency = "USD",
+                QuoteCurrency = "EUR",
+                Bid = 2.00m,
+                Ask = 1.90m // Ask < Bid → invalid
+            };
+
+            var result = await controller.UpdateForeignExchangeRate(existing.Id, request);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal("Ask price must be greater than or equal to Bid.", badRequest.Value);
+        }
 
         /// <summary>
         /// Verifies that Update returns BadRequest when the controller's ModelState is invalid.
