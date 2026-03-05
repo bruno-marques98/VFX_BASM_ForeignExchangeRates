@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="ForeignExchangeRatesTests/ForeignExchangeRatesTests.csproj" Id="edbfd047-8a17-4ade-96a2-3a0fde6afcd3" />
   <Project Path="VFX_BASM_ForeignExchangeRates/VFX_BASM_ForeignExchangeRates.csproj" />
 </Solution>
